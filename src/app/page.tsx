@@ -11,9 +11,6 @@ export default function HomePage() {
           <ContextCard key={c.title} title={c.title} body={c.body} />
         ))}
       </section>
-      <section className="mt-10 max-w-prose2">
-        <p className="text-stone-700">{siteCopy.transparency}</p>
-      </section>
     </div>
   );
 }

@@ -7,30 +7,26 @@ export const siteCopy = {
     title: "Vision for Winchester",
     kicker: "Future of Silver Hill",
     intro:
-      "Silver Hill will shape the centre of Winchester for decades. This citizen-led review lets residents compare the visuals, say what feels right, and ask what still needs to be shown.",
+      "Silver Hill will shape Winchester for decades. Compare the visuals. Demand a higher standard.",
     cta: "Start the visual review",
   },
   context: [
     {
-      title: "Why this matters",
-      body:
-        "Winchester has waited a generation for this part of the city to be resolved. The result will affect footfall, hospitality, homes, workspaces, streets, visitors and the daily character of the city.",
+      title: "Aspiration",
+      body: "Encode the city we want into the buildings we get.",
     },
     {
-      title: "Clearer public evidence",
-      body:
-        "Residents should be able to see the choices plainly: street edges, materials, rooflines, shopfronts, public space, and the buildings that may be hidden behind more flattering views.",
+      title: "Legacy",
+      body: "Hold developers to a standard of caring, durable work.",
     },
     {
-      title: "Beyond style",
-      body:
-        "A beautiful city also needs urban judgement: the right mix of homes, retail, workspace, co-working, co-living, density, movement, sunlight, servicing and long-term resilience.",
+      title: "What’s hidden",
+      body: "Some buildings aren’t being shown. Ask to see them.",
     },
   ],
-  transparency:
-    "Developers and councils must balance viability, programme and risk. Residents have an equally serious test: will this become a durable, useful, beautiful place that strengthens Winchester for generations?",
+  transparency: "",
   disclaimer:
-    "This is an independent public-feedback tool, not an official Winchester City Council consultation. The alternative images are illustrative prompts for comparison, not technical planning drawings.",
+    "Independent. Not an official Winchester City Council consultation.",
   review: {
     explainerTitle: "How this works",
     explainerBody:
