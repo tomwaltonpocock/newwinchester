@@ -1,0 +1,16 @@
+Generate a QR once the final domain is known.
+
+Recommended:
+- Encode the campaign URL: https://<your-domain>/chronicle
+  (the /chronicle redirect tags responses as source=chronicle for the admin Source distribution)
+- Use a high error-correction level (Q or H) so a small VW logo can sit centre.
+- Test by scanning on:
+  - iPhone Safari and Camera
+  - Android Chrome
+  - Samsung Internet
+  - Desktop webcam if relevant
+- Include the URL printed beneath the QR for sighted readers.
+- Tools that work: https://www.qr-code-generator.com, https://qrcode.tec-it.com,
+  or any local CLI (`qrencode -o vfw.png 'https://...'`).
+
+Save the resulting image as /public/qr.png and reference it from print collateral.
