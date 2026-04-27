@@ -8,5 +8,5 @@
     <rect x="400" y="200" width="120" height="200"/>
     <rect x="560" y="200" width="120" height="200"/>
   </g>
-  <text x="400" y="560" font-family="sans-serif" font-size="22" fill="#3a342c" text-anchor="middle">Developer street view (placeholder)</text>
+  <text x="400" y="560" font-family="sans-serif" font-size="22" fill="#3a342c" text-anchor="middle">aspect-1-0 (developer placeholder)</text>
 </svg>

@@ -6,7 +6,7 @@ import { toCsv } from "@/lib/csv";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-const TYPES = new Set(["submissions", "pairs", "comments", "missing", "council"]);
+const TYPES = new Set(["submissions", "aspects", "comments", "missing", "council"]);
 
 export async function GET(req: NextRequest) {
   const authFail = checkAdminBasicAuth(req);
@@ -24,8 +24,8 @@ export async function GET(req: NextRequest) {
   if (type === "submissions") {
     const { data } = await supabase.from("submissions").select("*").order("created_at", { ascending: false });
     csv = toCsv(data ?? []);
-  } else if (type === "pairs") {
-    const { data } = await supabase.from("pair_responses").select("*").order("created_at", { ascending: false });
+  } else if (type === "aspects") {
+    const { data } = await supabase.from("aspect_responses").select("*").order("created_at", { ascending: false });
     csv = toCsv(data ?? []);
   } else if (type === "comments") {
     const { data } = await supabase
@@ -45,7 +45,7 @@ export async function GET(req: NextRequest) {
     const { data } = await supabase
       .from("submissions")
       .select(
-        "id, public_token, created_at, completed_at, source, postcode_outward, postcode_status, geo_country, geo_region, validation_score, validation_category, overall_old_rating, overall_current_rating, overall_refined_rating, missing_info, missing_info_comment, general_comment, consent_share_council, consent_public_summary"
+        "id, public_token, created_at, completed_at, source, postcode_outward, postcode_status, geo_country, geo_region, validation_score, validation_category, missing_info, missing_info_comment, general_comment, consent_share_council, consent_public_summary"
       )
       .eq("consent_share_council", true)
       .order("created_at", { ascending: false });

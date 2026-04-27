@@ -108,29 +108,31 @@ If absent, contact messages are stored in `contact_messages` and visible in `/ad
 
 ---
 
-## 8. Adding image pairs
+## 8. Adding image aspects (this is the only image step you need)
 
-Edit `src/content/imagePairs.ts`:
+**Drop files into `public/aspects/` using this naming convention:**
 
-```ts
-{
-  id: "street-edge",
-  title: "Street edge & shopfront rhythm",
-  question: "Which feels like a Winchester street edge — one you would walk along?",
-  category: "street-edge",
-  developerImage: "/pairs/street-edge/developer.webp",
-  refinedImage: "/pairs/street-edge/refined.webp",
-  developerAlt: "...",
-  refinedAlt: "...",
-  whatToNotice: ["...", "..."],
-}
+```
+public/aspects/aspect-1-0.png    ← developer / current proposal (REQUIRED)
+public/aspects/aspect-1-1.png    ← AI alternative 1 (optional)
+public/aspects/aspect-1-2.png    ← AI alternative 2 (optional)
+public/aspects/aspect-1-3.png    ← AI alternative 3 (optional)
+
+public/aspects/aspect-2-0.png    ← developer for aspect 2
+public/aspects/aspect-2-1.png    ← alt 1 for aspect 2
+…and so on for as many aspects as you want.
 ```
 
-- Drop optimised images in `public/pairs/<id>/`.
-- Aim for ≤ 300 KB per image, WebP or JPEG.
-- The placeholders in `public/placeholders/` are SVG — replace before launch.
+- The number of alternatives per aspect can be **1, 2 or 3** — the UI adapts.
+- Accepted extensions: `.png` (recommended), `.jpg`, `.jpeg`, `.webp`, `.svg`.
+- Aim for ≤ 300 KB per image, ~1600 px on the long edge, **EXIF stripped**.
+- 4:3 aspect ratio renders best.
 
-The order of pairs in the array is the order shown to the user. Left/right is randomised per participant per pair automatically.
+**That's it. There's no JSON to edit.** The discovery script (`scripts/build-aspects.mjs`) runs automatically before `dev`, `build` and `start`, scanning `public/aspects/` and generating `src/content/aspects.generated.ts`. Run it manually with `npm run aspects`.
+
+**Optional metadata** (titles, questions, "what to notice" bullets) lives in `src/content/aspects.ts`. Anything not customised falls back to "Aspect N" with a generic question.
+
+The slider/side-by-side toggle and alt picker appear automatically when there are alternatives.
 
 ---
 
@@ -162,7 +164,7 @@ The Playwright tests assume the dev or production server is running. Set `BASE_U
 - [ ] `.env.local` filled, secrets in Vercel
 - [ ] Supabase migration applied
 - [ ] Storage bucket `uploads` exists and is private
-- [ ] Real image pairs added under `public/pairs/`
+- [ ] Real aspect images dropped under `public/aspects/` (`aspect-N-K.png`)
 - [ ] `og-image.svg` replaced with a 1200×630 PNG (`og-image.png`)
 - [ ] Privacy controller name + contact email filled in `/privacy`
 - [ ] Council recipient list verified
@@ -217,7 +219,7 @@ Admin endpoints (HTTP Basic Auth required):
 
 - `/admin/report` — print-friendly public summary (browser → Print → Save as PDF)
 - `/api/admin/export?type=submissions` — full submissions CSV (internal columns)
-- `/api/admin/export?type=pairs` — pair responses CSV
+- `/api/admin/export?type=aspects` — aspect responses CSV (star ratings per image)
 - `/api/admin/export?type=comments` — comments CSV
 - `/api/admin/export?type=missing` — missing-info CSV
 - `/api/admin/export?type=council` — Council summary CSV (consented submissions only, hashes stripped)

@@ -25,9 +25,6 @@ export type SubmissionRow = {
   validation_category: "low" | "plausible" | "higher" | null;
   duplicate_flag: boolean;
   suspicious_reasons: string[];
-  overall_old_rating: number | null;
-  overall_current_rating: number | null;
-  overall_refined_rating: number | null;
   missing_info: string[];
   missing_info_comment: string | null;
   general_comment: string | null;
@@ -42,14 +39,15 @@ export type SubmissionRow = {
   council_share_viewed_count: number;
 };
 
-export type PairResponseRow = {
+export type AspectResponseRow = {
   id: string;
   submission_id: string;
-  image_pair_id: string;
-  pair_order: number;
-  left_kind: "developer" | "refined";
-  right_kind: "developer" | "refined";
-  preference: "developer" | "refined" | "no_preference" | null;
+  aspect_n: number;
+  display_order: number[];
+  star_developer: number | null;
+  star_alt_1: number | null;
+  star_alt_2: number | null;
+  star_alt_3: number | null;
   comment: string | null;
   created_at: string;
 };

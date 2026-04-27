@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 import { getServiceClient } from "@/lib/supabase";
 import { signedUrl } from "@/lib/storage";
+import { aspects } from "@/content/aspects";
 
 export const dynamic = "force-dynamic";
 
@@ -18,17 +19,16 @@ export default async function ShareSubmissionPage({
 
   if (!sub || !sub.consent_share_council) return notFound();
 
-  // Increment view counter (best-effort, not transactional).
   await supabase
     .from("submissions")
     .update({ council_share_viewed_count: (sub.council_share_viewed_count ?? 0) + 1 })
     .eq("id", sub.id);
 
-  const { data: pairs } = await supabase
-    .from("pair_responses")
-    .select("image_pair_id, pair_order, preference, comment")
+  const { data: aspectRows } = await supabase
+    .from("aspect_responses")
+    .select("aspect_n, star_developer, star_alt_1, star_alt_2, star_alt_3, comment")
     .eq("submission_id", sub.id)
-    .order("pair_order", { ascending: true });
+    .order("aspect_n", { ascending: true });
 
   const { data: ups } = await supabase
     .from("uploads")
@@ -56,21 +56,21 @@ export default async function ShareSubmissionPage({
         {sub.validation_category ? ` · validation: ${sub.validation_category}` : ""}
       </p>
 
-      <h2 className="font-serif mt-8">Overall ratings</h2>
-      <ul className="mt-2 text-sm">
-        <li>Older approach: {sub.overall_old_rating ?? "not sure"}</li>
-        <li>Current developer direction: {sub.overall_current_rating ?? "not sure"}</li>
-        <li>Citizen-refined direction: {sub.overall_refined_rating ?? "not sure"}</li>
-      </ul>
-
-      <h2 className="font-serif mt-8">Per-pair preferences</h2>
-      <ul className="mt-2 text-sm space-y-2">
-        {(pairs ?? []).map((p) => (
-          <li key={p.image_pair_id}>
-            <strong>{p.image_pair_id}:</strong> {p.preference ?? "—"}
-            {showComments && p.comment ? <div className="text-stone-700 mt-1">{p.comment}</div> : null}
-          </li>
-        ))}
+      <h2 className="font-serif mt-8">Per-aspect ratings (1–5)</h2>
+      <ul className="mt-2 text-sm space-y-3">
+        {(aspectRows ?? []).map((r) => {
+          const meta = aspects.find((a) => a.n === r.aspect_n);
+          return (
+            <li key={r.aspect_n} className="border-l-2 border-stone-200 pl-3">
+              <strong>Aspect {r.aspect_n}{meta ? ` — ${meta.title}` : ""}:</strong>{" "}
+              current {fmt(r.star_developer)}
+              {(meta?.altIndices.includes(1) || r.star_alt_1 != null) && ` · alt 1 ${fmt(r.star_alt_1)}`}
+              {(meta?.altIndices.includes(2) || r.star_alt_2 != null) && ` · alt 2 ${fmt(r.star_alt_2)}`}
+              {(meta?.altIndices.includes(3) || r.star_alt_3 != null) && ` · alt 3 ${fmt(r.star_alt_3)}`}
+              {showComments && r.comment ? <div className="mt-1 text-stone-700">{r.comment}</div> : null}
+            </li>
+          );
+        })}
       </ul>
 
       {showComments && (sub.general_comment || sub.missing_info_comment) && (
@@ -115,4 +115,8 @@ export default async function ShareSubmissionPage({
       </p>
     </article>
   );
+}
+
+function fmt(n: number | null | undefined): string {
+  return n == null ? "—" : String(n);
 }

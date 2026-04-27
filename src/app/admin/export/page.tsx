@@ -3,7 +3,7 @@ export const dynamic = "force-dynamic";
 export default function ExportPage() {
   const links: { href: string; label: string; note?: string }[] = [
     { href: "/api/admin/export?type=submissions", label: "Submissions CSV", note: "All fields, internal columns included." },
-    { href: "/api/admin/export?type=pairs", label: "Pair responses CSV" },
+    { href: "/api/admin/export?type=aspects", label: "Aspect responses CSV" },
     { href: "/api/admin/export?type=comments", label: "Comments CSV" },
     { href: "/api/admin/export?type=missing", label: "Missing-info CSV" },
     {

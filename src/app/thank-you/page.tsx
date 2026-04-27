@@ -8,9 +8,9 @@ export const dynamic = "force-dynamic";
 type Search = {
   t?: string;
   share?: string;
-  pr?: string;
-  pd?: string;
-  np?: string;
+  pa?: string;
+  pc?: string;
+  tie?: string;
   ttl?: string;
 };
 
@@ -18,13 +18,13 @@ export default function ThankYouPage({ searchParams }: { searchParams: Search })
   const publicToken = searchParams.t || "";
   const shareUrl = searchParams.share || null;
   const total = parseInt(searchParams.ttl || "0", 10) || 0;
-  const refined = parseInt(searchParams.pr || "0", 10) || 0;
-  const developer = parseInt(searchParams.pd || "0", 10) || 0;
-  const noPref = parseInt(searchParams.np || "0", 10) || 0;
+  const altPref = parseInt(searchParams.pa || "0", 10) || 0;
+  const currPref = parseInt(searchParams.pc || "0", 10) || 0;
+  const tie = parseInt(searchParams.tie || "0", 10) || 0;
 
   const summaryLine =
     total > 0
-      ? `preferred ${refined} of ${total} citizen-refined options, preferred ${developer} of ${total} current options, no preference ${noPref}`
+      ? `preferred a citizen alternative on ${altPref} of ${total} aspects, preferred the current proposal on ${currPref}, tied or unrated ${tie}`
       : "[summary not available]";
 
   const subject = "Silver Hill / Central Winchester: resident feedback";

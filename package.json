@@ -3,15 +3,19 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
+    "predev": "node scripts/build-aspects.mjs",
     "dev": "next dev",
+    "prebuild": "node scripts/build-aspects.mjs",
     "build": "next build",
+    "prestart": "node scripts/build-aspects.mjs",
     "start": "next start",
     "lint": "next lint",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:e2e": "playwright test",
-    "test:e2e:install": "playwright install --with-deps"
+    "test:e2e:install": "playwright install --with-deps",
+    "aspects": "node scripts/build-aspects.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.45.4",

@@ -5,7 +5,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     <div>
       <nav className="flex flex-wrap gap-4 text-sm border-b border-stone-200 pb-3 mb-6">
         <Link href="/admin">Overview</Link>
-        <Link href="/admin/pairs">Pairs</Link>
+        <Link href="/admin/aspects">Aspects</Link>
         <Link href="/admin/missing-info">Missing info</Link>
         <Link href="/admin/uploads">Uploads</Link>
         <Link href="/admin/contact">Contact</Link>

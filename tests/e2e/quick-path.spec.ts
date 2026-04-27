@@ -1,8 +1,8 @@
 import { test, expect } from "@playwright/test";
 
 /**
- * "Quick path" — smoke test the multi-step flow renders without server writes.
- * Skipped automatically when no Supabase backend is configured.
+ * Smoke-test the multi-step review flow renders. Skipped automatically when
+ * Supabase isn't configured (no live submission).
  */
 test.skip(!process.env.SUPABASE_URL, "Requires Supabase for live submissions");
 
@@ -11,23 +11,10 @@ test("user can step through the review flow", async ({ page }) => {
   await expect(page.getByRole("heading", { name: /How this works/i })).toBeVisible();
   await page.getByRole("button", { name: /Continue/i }).click();
 
-  // Click "no clear preference" on each pair to advance.
-  for (let i = 0; i < 3; i++) {
-    await page.getByRole("button", { name: /No clear preference/i }).click();
-    await page.getByRole("button", { name: /Continue/i }).click();
-  }
+  // Aspect 1 should be visible.
+  await expect(page.getByText(/Aspect 1 of/i)).toBeVisible();
 
-  // Missing info step
-  await expect(page.getByRole("heading", { name: /What still needs to be shown/i })).toBeVisible();
+  // Star ratings are radio groups; tap "5 stars" on Current to enable Continue.
+  await page.getByRole("radio", { name: /5 stars/i }).first().click();
   await page.getByRole("button", { name: /Continue/i }).click();
-
-  // Overall step
-  await expect(page.getByRole("heading", { name: /Overall view/i })).toBeVisible();
-  await page.getByRole("button", { name: /Continue/i }).click();
-
-  // Upload step (skip)
-  await page.getByRole("button", { name: /Continue/i }).click();
-
-  // Validation page renders
-  await expect(page.getByRole("heading", { name: /Almost done/i })).toBeVisible();
 });

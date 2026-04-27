@@ -1,22 +1,33 @@
 import { getServiceClient } from "@/lib/supabase";
-import { imagePairs } from "@/content/imagePairs";
-import { missingInfoOptions } from "@/content/missingInfoOptions";
+import { aspects } from "@/content/aspects";
 
 export const dynamic = "force-dynamic";
+
+type AspectRow = {
+  submission_id: string;
+  aspect_n: number;
+  star_developer: number | null;
+  star_alt_1: number | null;
+  star_alt_2: number | null;
+  star_alt_3: number | null;
+};
+
+function meanOrNull(xs: number[]): number | null {
+  if (xs.length === 0) return null;
+  return xs.reduce((s, n) => s + n, 0) / xs.length;
+}
 
 export default async function ReportPage() {
   const supabase = getServiceClient();
   const { data: subs } = await supabase
     .from("submissions")
-    .select("id, validation_category, postcode_status, general_comment, consent_public_summary, missing_info, missing_info_comment, overall_old_rating, overall_current_rating, overall_refined_rating")
+    .select("id, validation_category, postcode_status, general_comment, consent_public_summary, missing_info, missing_info_comment")
     .not("completed_at", "is", null);
 
   const total = subs?.length ?? 0;
   const validation = { low: 0, plausible: 0, higher: 0 } as Record<string, number>;
   const postcode: Record<string, number> = {};
   const missingCounts: Record<string, number> = {};
-
-  let oldSum = 0, oldN = 0, curSum = 0, curN = 0, refSum = 0, refN = 0;
 
   for (const r of subs ?? []) {
     if (r.validation_category) validation[r.validation_category as string]++;
@@ -25,32 +36,35 @@ export default async function ReportPage() {
     for (const m of (r.missing_info as string[]) ?? []) {
       missingCounts[m] = (missingCounts[m] ?? 0) + 1;
     }
-    if (typeof r.overall_old_rating === "number") { oldSum += r.overall_old_rating; oldN++; }
-    if (typeof r.overall_current_rating === "number") { curSum += r.overall_current_rating; curN++; }
-    if (typeof r.overall_refined_rating === "number") { refSum += r.overall_refined_rating; refN++; }
   }
 
   const validatedIds = new Set(
-    (subs ?? []).filter((s) => s.validation_category === "plausible" || s.validation_category === "higher").map((s) => s.id)
+    (subs ?? [])
+      .filter((s) => s.validation_category === "plausible" || s.validation_category === "higher")
+      .map((s) => s.id)
   );
 
-  const { data: pairs } = await supabase
-    .from("pair_responses")
-    .select("submission_id, image_pair_id, preference");
+  const { data: rowsRaw } = await supabase
+    .from("aspect_responses")
+    .select("submission_id, aspect_n, star_developer, star_alt_1, star_alt_2, star_alt_3");
+  const rows = (rowsRaw ?? []) as AspectRow[];
+  const validatedRows = rows.filter((r) => validatedIds.has(r.submission_id));
 
-  const pairSummaries = imagePairs.map((p) => {
-    const rows = (pairs ?? []).filter((r) => r.image_pair_id === p.id && validatedIds.has(r.submission_id));
-    const tot = rows.length;
-    const dev = rows.filter((r) => r.preference === "developer").length;
-    const ref = rows.filter((r) => r.preference === "refined").length;
-    const np = rows.filter((r) => r.preference === "no_preference").length;
+  const aspectSummaries = aspects.map((a) => {
+    const aRows = validatedRows.filter((r) => r.aspect_n === a.n);
+    const dev = aRows.map((r) => r.star_developer).filter((n): n is number => n != null);
+    const alt1 = aRows.map((r) => r.star_alt_1).filter((n): n is number => n != null);
+    const alt2 = aRows.map((r) => r.star_alt_2).filter((n): n is number => n != null);
+    const alt3 = aRows.map((r) => r.star_alt_3).filter((n): n is number => n != null);
     return {
-      id: p.id,
-      title: p.title,
-      total: tot,
-      developerPct: tot ? Math.round((dev / tot) * 100) : 0,
-      refinedPct: tot ? Math.round((ref / tot) * 100) : 0,
-      noPrefPct: tot ? Math.round((np / tot) * 100) : 0,
+      n: a.n,
+      title: a.title,
+      total: aRows.length,
+      meanDev: meanOrNull(dev),
+      meanAlt1: a.altIndices.includes(1) ? meanOrNull(alt1) : null,
+      meanAlt2: a.altIndices.includes(2) ? meanOrNull(alt2) : null,
+      meanAlt3: a.altIndices.includes(3) ? meanOrNull(alt3) : null,
+      altIndices: a.altIndices,
     };
   });
 
@@ -63,6 +77,8 @@ export default async function ReportPage() {
     .sort((a, b) => b[1] - a[1])
     .slice(0, 6);
 
+  const fmt = (n: number | null) => (n == null ? "—" : n.toFixed(2));
+
   return (
     <article className="max-w-prose2">
       <p className="text-xs uppercase tracking-widest text-stone-600 no-print">Public-style report</p>
@@ -72,19 +88,16 @@ export default async function ReportPage() {
         plausible {validation.plausible}, low confidence {validation.low}.
       </p>
 
-      <h2 className="font-serif mt-6">Overall ratings (mean, where given)</h2>
-      <ul className="mt-2 text-sm">
-        <li>Older approach: {oldN ? (oldSum / oldN).toFixed(2) : "—"} (n={oldN})</li>
-        <li>Current developer direction: {curN ? (curSum / curN).toFixed(2) : "—"} (n={curN})</li>
-        <li>Citizen-refined direction: {refN ? (refSum / refN).toFixed(2) : "—"} (n={refN})</li>
-      </ul>
-
-      <h2 className="font-serif mt-6">Pair-by-pair preference (validated only)</h2>
+      <h2 className="font-serif mt-6">Aspect ratings (validated only, mean of 1–5)</h2>
       <ul className="mt-2 text-sm space-y-1">
-        {pairSummaries.map((p) => (
-          <li key={p.id}>
-            <strong>{p.title}</strong>: refined {p.refinedPct}% · developer {p.developerPct}% ·
-            no preference {p.noPrefPct}% (n={p.total})
+        {aspectSummaries.map((a) => (
+          <li key={a.n}>
+            <strong>Aspect {a.n} — {a.title}</strong>:
+            {" "}current {fmt(a.meanDev)}
+            {a.altIndices.includes(1) && ` · alt 1 ${fmt(a.meanAlt1)}`}
+            {a.altIndices.includes(2) && ` · alt 2 ${fmt(a.meanAlt2)}`}
+            {a.altIndices.includes(3) && ` · alt 3 ${fmt(a.meanAlt3)}`}
+            {" "}(n={a.total})
           </li>
         ))}
       </ul>
