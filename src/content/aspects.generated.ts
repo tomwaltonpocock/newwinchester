@@ -10,9 +10,9 @@ export const generatedAspects: GeneratedAspect[] = [
   {
     "n": 1,
     "paths": {
-      "0": "/aspects/aspect-1-0.svg",
-      "1": "/aspects/aspect-1-1.svg",
-      "2": "/aspects/aspect-1-2.svg"
+      "0": "/aspects/aspect-1-0.png",
+      "1": "/aspects/aspect-1-1.png",
+      "2": "/aspects/aspect-1-2.png"
     }
   },
   {
