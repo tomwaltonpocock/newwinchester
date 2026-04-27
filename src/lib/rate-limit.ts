@@ -84,6 +84,25 @@ export async function checkComplete(
   };
 }
 
+export async function checkRecipientMessage(
+  ipHash: string | null,
+  recipientId: string
+): Promise<RateLimitCheck> {
+  if (!ipHash) return { allowed: true };
+  const eventType = `recipient_message:${recipientId}`;
+  const c = await countEvents({
+    field: "ip_hash",
+    value: ipHash,
+    eventType,
+    windowSeconds: 86400,
+  });
+  // Cap: 3 messages per IP per recipient per 24h.
+  if (c >= 3) {
+    return { allowed: false, reason: "ip_recipient_message_rate_exceeded", count: c };
+  }
+  return { allowed: true, count: c };
+}
+
 export async function checkContact(ipHash: string | null): Promise<RateLimitCheck> {
   if (!ipHash) return { allowed: true };
   const c = await countEvents({

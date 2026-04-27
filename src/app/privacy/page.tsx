@@ -26,7 +26,21 @@ export default function PrivacyPage() {
         <li>To share anonymised or consented summaries with the Council and development team.</li>
         <li>To send updates and event invitations only to people who explicitly opt in.</li>
         <li>To handle direct contact messages.</li>
+        <li>To forward civil, constructive messages to named decision-makers (Council leader and developer’s representative) if you choose to use that feature.</li>
       </ol>
+
+      <h2 className="mt-6 font-serif">Messaging named decision-makers</h2>
+      <p>
+        The homepage offers a button to send a message to a named local decision-maker (currently the Leader of Winchester City Council and the developer’s Development Director). If you use it:
+      </p>
+      <ul>
+        <li>Your message is screened by an automated moderator before it is forwarded.</li>
+        <li>Threats, harassment, slurs, scams or doxing are rejected and never forwarded.</li>
+        <li>Borderline or off-topic messages are held for human review.</li>
+        <li>Constructive messages are forwarded by email. If you provide an email address, it is set as the Reply-To so the recipient can reply directly.</li>
+        <li>Messages are stored for up to 12 months; we may share aggregated counts publicly but not individual messages.</li>
+        <li>If you do not want your message forwarded, do not use the “Send a message” button — use the <a href="/contact">contact form</a> instead, which goes only to the campaign administrator.</li>
+      </ul>
 
       <h2 className="mt-6 font-serif">What we collect</h2>
       <ul>

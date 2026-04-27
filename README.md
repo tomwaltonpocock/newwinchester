@@ -136,6 +136,32 @@ The slider/side-by-side toggle and alt picker appear automatically when there ar
 
 ---
 
+## 8b. Hero photo
+
+Drop a single image at `public/winchester.png` (or .jpg). It becomes the
+full-bleed backdrop on the homepage with a heritage-tinted gradient over it.
+Recommended: 1920×1280 or larger, ≤ 400 KB after compression. If absent, the
+hero degrades to a dark heritage colour and still reads cleanly.
+
+## 8c. Decision-maker right-rail (homepage)
+
+The homepage shows a right-rail of named decision-makers. Each one has:
+
+1. **Photo** — drop a square image at the path in `imagePath` in `src/content/recipients.ts` (default placeholder is an SVG of initials at `public/people/<id>.svg`).
+2. **Email** — held in an env var named in the `envEmailKey` field. Never committed.
+
+When a resident sends a message:
+
+1. Honeypot + Turnstile + per-IP-per-recipient rate limit (3 / day).
+2. Stored in `contact_messages` with `recipient_id` set and the resident's email AES-GCM-encrypted.
+3. Classified by Claude Haiku via `ANTHROPIC_API_KEY`:
+   - `forward` → sent via Resend with `Reply-To` set to the resident's email; status `forwarded`.
+   - `hold` → admin must approve; status `held`.
+   - `reject` → never forwarded; status `rejected`.
+4. Default-deny: if `ANTHROPIC_API_KEY` or `RESEND_API_KEY` or the recipient's email env var is unset, every message is held.
+
+Strongly recommend launching with forwarding disabled (omit `RESEND_API_KEY` or the recipient emails) so you can review messages first before opening the firehose.
+
 ## 9. Council / decision-maker recipient list
 
 Set `COUNCIL_EMAILS` (comma-separated). Verify each one before launch. The default seed in `.env.example` includes:
