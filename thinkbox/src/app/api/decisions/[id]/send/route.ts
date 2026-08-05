@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { db } from "@/lib/supabase";
+import { sql } from "@/lib/db";
 import { getThreadMessages, sendMessage, createGmailDraft } from "@/lib/gmail";
 import { getAccount } from "@/lib/google";
 
@@ -16,11 +16,11 @@ const Body = z.object({
 export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
   const parsed = Body.safeParse(await req.json());
   if (!parsed.success) return NextResponse.json({ error: "bad request" }, { status: 400 });
-  const supa = db();
   const account = await getAccount();
   if (!account) return NextResponse.json({ error: "not connected" }, { status: 400 });
 
-  const { data: d } = await supa.from("decisions").select("*").eq("id", params.id).maybeSingle();
+  const rows = await sql`select * from decisions where id = ${params.id}`;
+  const d = rows[0];
   if (!d) return NextResponse.json({ error: "not found" }, { status: 404 });
 
   const thread = await getThreadMessages(d.thread_id);
@@ -48,14 +48,11 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
 
   if (parsed.data.mode === "send") {
     await sendMessage(common);
-    await supa
-      .from("decisions")
-      .update({ status: "done", decided_at: new Date().toISOString(), updated_at: new Date().toISOString() })
-      .eq("id", params.id);
+    await sql`update decisions set status = 'done', decided_at = now(), updated_at = now() where id = ${params.id}`;
     return NextResponse.json({ ok: true, sent: true });
   } else {
     const draftId = await createGmailDraft(common);
-    await supa.from("decisions").update({ gmail_draft_id: draftId, updated_at: new Date().toISOString() }).eq("id", params.id);
+    await sql`update decisions set gmail_draft_id = ${draftId}, updated_at = now() where id = ${params.id}`;
     return NextResponse.json({ ok: true, gmailDraftId: draftId });
   }
 }

@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { db } from "@/lib/supabase";
+import { sql } from "@/lib/db";
 import { getThreadMessages } from "@/lib/gmail";
 import { stripQuoted } from "@/lib/voice";
 import { Workbench } from "@/components/Workbench";
@@ -8,8 +8,8 @@ import { Workbench } from "@/components/Workbench";
 export const dynamic = "force-dynamic";
 
 export default async function DecisionDetail({ params }: { params: { id: string } }) {
-  const supa = db();
-  const { data: d } = await supa.from("decisions").select("*").eq("id", params.id).maybeSingle();
+  const rows = await sql`select * from decisions where id = ${params.id}`;
+  const d = rows[0];
   if (!d) notFound();
 
   let thread: { from: string; date: string; body: string }[] = [];

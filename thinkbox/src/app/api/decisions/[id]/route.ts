@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { db } from "@/lib/supabase";
+import { sql } from "@/lib/db";
 import { effectiveRank, updateBias } from "@/lib/rank";
 
 export const dynamic = "force-dynamic";
@@ -13,44 +13,45 @@ const Patch = z.object({
 export async function PATCH(req: NextRequest, { params }: { params: { id: string } }) {
   const body = Patch.safeParse(await req.json());
   if (!body.success) return NextResponse.json({ error: "bad request" }, { status: 400 });
-  const supa = db();
-  const { data: d } = await supa.from("decisions").select("*, threads(participants)").eq("id", params.id).maybeSingle();
+  const rows = await sql`
+    select d.*, t.participants from decisions d join threads t on t.id = d.thread_id where d.id = ${params.id}`;
+  const d = rows[0];
   if (!d) return NextResponse.json({ error: "not found" }, { status: 404 });
 
   const { action, snooze_days } = body.data;
-  const patch: Record<string, unknown> = { updated_at: new Date().toISOString() };
 
   if (action === "up" || action === "down") {
-    const dir = action === "up" ? 1 : -1;
-    patch.rank_adjust = (d.rank_adjust ?? 0) + dir;
+    const dir = (action === "up" ? 1 : -1) as 1 | -1;
+    const rankAdjust = (d.rank_adjust ?? 0) + dir;
     // learn: nudge sender + kind bias
-    const participants = (d.threads?.participants ?? []) as { email: string }[];
+    const participants = (d.participants ?? []) as { email: string }[];
     const sender = participants[0]?.email;
     for (const key of [sender ? `sender:${sender}` : null, `kind:${d.kind}`].filter(Boolean) as string[]) {
-      const { data: b } = await supa.from("rank_bias").select("*").eq("key", key).maybeSingle();
-      const next = updateBias(b?.bias ?? 0, b?.samples ?? 0, dir as 1 | -1);
-      await supa.from("rank_bias").upsert({ key, bias: next.bias, samples: next.samples, updated_at: new Date().toISOString() });
+      const existing = await sql`select bias, samples from rank_bias where key = ${key}`;
+      const next = updateBias(existing[0]?.bias ?? 0, existing[0]?.samples ?? 0, dir);
+      await sql`
+        insert into rank_bias (key, bias, samples, updated_at) values (${key}, ${next.bias}, ${next.samples}, now())
+        on conflict (key) do update set bias = excluded.bias, samples = excluded.samples, updated_at = now()`;
     }
-    patch.effective_rank = effectiveRank({
+    const rank = effectiveRank({
       magnitude: d.magnitude,
-      rankAdjust: patch.rank_adjust as number,
+      rankAdjust,
       senderBias: 0,
       kindBias: 0,
       ageHours: 0,
       needsReplyBy: d.needs_reply_by ? new Date(d.needs_reply_by) : null,
     });
+    await sql`update decisions set rank_adjust = ${rankAdjust}, effective_rank = ${rank}, updated_at = now() where id = ${params.id}`;
   } else if (action === "done") {
-    patch.status = "done";
-    patch.decided_at = new Date().toISOString();
+    await sql`update decisions set status = 'done', decided_at = now(), updated_at = now() where id = ${params.id}`;
   } else if (action === "dismiss") {
-    patch.status = "dismissed";
+    await sql`update decisions set status = 'dismissed', updated_at = now() where id = ${params.id}`;
   } else if (action === "reopen") {
-    patch.status = "open";
+    await sql`update decisions set status = 'open', updated_at = now() where id = ${params.id}`;
   } else if (action === "snooze") {
-    patch.status = "snoozed";
-    patch.snoozed_until = new Date(Date.now() + (snooze_days ?? 3) * 86400_000).toISOString();
+    const until = new Date(Date.now() + (snooze_days ?? 3) * 86400_000).toISOString();
+    await sql`update decisions set status = 'snoozed', snoozed_until = ${until}, updated_at = now() where id = ${params.id}`;
   }
 
-  await supa.from("decisions").update(patch).eq("id", params.id);
   return NextResponse.json({ ok: true });
 }

@@ -1,19 +1,14 @@
-import { db } from "@/lib/supabase";
+import { sql } from "@/lib/db";
 import { RuleForm } from "@/components/RuleForm";
 
 export const dynamic = "force-dynamic";
 
 export default async function NoisePage() {
-  const supa = db();
-  const { data: noiseRows } = await supa
-    .from("noise_log")
-    .select("*")
-    .order("received_at", { ascending: false })
-    .limit(80);
-  const { data: rules } = await supa.from("sender_rules").select("*").order("pattern");
+  const noiseRows = await sql`select * from noise_log order by received_at desc nulls last limit 80`;
+  const rules = await sql`select * from sender_rules order by pattern`;
 
-  const signals = (noiseRows ?? []).filter((n) => n.is_signal);
-  const junk = (noiseRows ?? []).filter((n) => !n.is_signal);
+  const signals = noiseRows.filter((n) => n.is_signal);
+  const junk = noiseRows.filter((n) => !n.is_signal);
 
   return (
     <main>
@@ -40,7 +35,7 @@ export default async function NoisePage() {
 
       <section className="mb-8">
         <h2 className="text-sm uppercase tracking-wide text-muted mb-2">Sender rules</h2>
-        <RuleForm rules={rules ?? []} />
+        <RuleForm rules={rules.map((r) => ({ pattern: r.pattern, rule: r.rule, note: r.note ?? null }))} />
       </section>
 
       <section>

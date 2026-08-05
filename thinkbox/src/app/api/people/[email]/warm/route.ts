@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { db } from "@/lib/supabase";
+import { sql } from "@/lib/db";
 import { getAccount } from "@/lib/google";
 import { listSentMessages, createGmailDraft } from "@/lib/gmail";
 import { getVoiceProfile, stripQuoted } from "@/lib/voice";
@@ -14,8 +14,8 @@ export async function POST(req: NextRequest, { params }: { params: { email: stri
   const email = decodeURIComponent(params.email).toLowerCase();
   const account = await getAccount();
   if (!account) return NextResponse.json({ error: "not connected" }, { status: 400 });
-  const supa = db();
-  const { data: c } = await supa.from("contacts").select("*").eq("email", email).maybeSingle();
+  const rows = await sql`select * from contacts where email = ${email}`;
+  const c = rows[0];
   if (!c) return NextResponse.json({ error: "unknown contact" }, { status: 404 });
 
   const { direction } = await req.json().catch(() => ({ direction: undefined as string | undefined }));
@@ -28,7 +28,13 @@ export async function POST(req: NextRequest, { params }: { params: { email: stri
     system: `You ghostwrite a short keep-in-touch email for the inbox owner. It must feel personal and specific, never like a "circling back" template. Reference something real from the history if there is one. 2-5 sentences. Write ONLY the email body.\n\nSTYLE GUIDE:\n${profile}\n\nNever use: "circling back", "touching base", "hope you're well", "it's been a while, I know". No AI-sounding polish.`,
     user: [
       `Contact: ${c.name || email} <${email}>`,
-      `Last contact: ${[c.last_inbound_at, c.last_outbound_at].filter(Boolean).sort().at(-1) ?? "unknown"}`,
+      `Last contact: ${
+        [c.last_inbound_at, c.last_outbound_at]
+          .filter(Boolean)
+          .map((x: unknown) => new Date(x as string).toISOString())
+          .sort()
+          .at(-1) ?? "unknown"
+      }`,
       c.notes ? `Owner's notes on them: ${c.notes}` : null,
       direction ? `Owner's steer: ${direction}` : null,
       `Recent exchanges:\n${excerpts.join("\n---\n") || "(none available)"}`,

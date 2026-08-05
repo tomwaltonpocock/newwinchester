@@ -11,63 +11,38 @@ Nothing is ever sent without you pressing Send.
 
 ---
 
-## Setup (~20 minutes, one-time)
+## Setup (three keys, one deploy)
 
-### 1. Google Cloud (Gmail + Calendar access)
+### 1. Google OAuth (~4 min — the only fiddly bit)
 
-For personal use you do **not** need Google verification — a project in "Testing" mode works indefinitely for the test users you add.
+For personal use you do **not** need Google verification — a project in "Testing" mode works indefinitely.
 
-1. [console.cloud.google.com](https://console.cloud.google.com) → New project (e.g. `thinkbox`).
+1. [console.cloud.google.com](https://console.cloud.google.com) → New project.
 2. **APIs & Services → Library** → enable **Gmail API** and **Google Calendar API**.
-3. **APIs & Services → OAuth consent screen** → External → fill in app name + your email → **Audience: Testing** → add your Gmail address as a **test user**.
-4. **Credentials → Create credentials → OAuth client ID → Web application**:
-   - Authorised redirect URI: `http://localhost:3100/api/auth/google/callback` (add your production URL later, e.g. `https://thinkbox-xyz.vercel.app/api/auth/google/callback`).
-5. Copy the client ID + secret into `.env.local`.
+3. **OAuth consent screen** → External → Audience: **Testing** → add your Gmail as a **test user**.
+4. **Credentials → OAuth client ID → Web application** → redirect URI `https://<your-app>.vercel.app/api/auth/google/callback` (add `http://localhost:3100/api/auth/google/callback` too for local dev).
 
-> Note: refresh tokens for Testing-mode apps whose consent screen requests sensitive scopes do not expire, but if Google ever invalidates one, just visit `/api/auth/google` again.
+### 2. Anthropic key (~1 min)
 
-### 2. Supabase
+[console.anthropic.com](https://console.anthropic.com) → API key.
 
-1. Create a project at [supabase.com](https://supabase.com).
-2. SQL editor → paste `supabase/migrations/001_init.sql` → Run.
-3. Copy the project URL + **service role** key into `.env.local`.
+### 3. Deploy on Vercel (~4 min)
 
-### 3. Anthropic
+1. Import the repo, **Root Directory = `thinkbox`**.
+2. Env vars: `APP_PASSWORD` (e.g. `tom:long-passphrase`), `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `ANTHROPIC_API_KEY`. Deploy.
+3. **Storage tab → Create Database → Neon (Postgres)** — `DATABASE_URL` is injected automatically; the schema creates itself on first request. No SQL to run.
+4. Open the app → log in with `APP_PASSWORD` → **Settings → Connect Google** → **Build voice profile** → **Sync now** → on **People**, **Index mailbox** and star your power list.
 
-Create an API key at [console.anthropic.com](https://console.anthropic.com) → `ANTHROPIC_API_KEY`.
+Cron hits `/api/sync` every 15 minutes automatically. Add the app to your phone's home screen and stop opening Gmail.
 
-### 4. Run it
-
-```bash
-cd thinkbox
-cp .env.example .env.local   # fill everything in; generate the two secrets as commented
-npm install
-npm run dev                  # http://localhost:3100
-```
-
-Log in with your `APP_PASSWORD` (Basic Auth), then on **Settings**:
-
-1. **Connect Google** — approve the consent screen.
-2. **Build voice profile** — distils your style from sent mail.
-3. **Sync now** — first triage of recent inbox mail.
-4. On **People**, press **Index mailbox** to build the CRM, then star your power list.
-5. On **Review**, set your priorities and build the first weekly review.
-
-### 5. Deploy (Vercel)
-
-1. Import the repo in Vercel, set **Root Directory = `thinkbox`**.
-2. Add every var from `.env.example` (set `NEXT_PUBLIC_APP_URL` to the deployed URL).
-3. Add the production redirect URI in Google Cloud credentials.
-4. `vercel.json` schedules `/api/sync` every 15 minutes; Vercel automatically sends `Authorization: Bearer $CRON_SECRET`, which the middleware accepts.
-
-Add it to your phone's home screen and stop opening Gmail.
+Local dev: `cp .env.example .env.local`, fill it (paste the Neon `DATABASE_URL`), `npm install`, `npm run dev` → http://localhost:3100.
 
 ---
 
 ## Architecture
 
 - **Next.js 14 (app router)**, single-user, HTTP Basic Auth via middleware.
-- **Supabase (Postgres)** for all state; Google tokens encrypted at rest (AES-256-GCM).
+- **Neon Postgres (via Vercel Storage)** for all state; schema self-creates on boot; Google tokens encrypted at rest (AES-256-GCM, key derived from `APP_PASSWORD` unless overridden).
 - **Gmail API** (`gmail.modify`) — read, label, draft, send. **Calendar API** — free/busy, travel detection.
 - **Anthropic**: a fast model (`TRIAGE_MODEL`) classifies every message; a strong model (`DRAFTING_MODEL`) writes drafts, keep-warm notes, and the weekly narrative.
 - Sync flow (`src/lib/sync.ts`): new inbox mail → sender rules → triage → decision cards / noise log / signals → Gmail labels → contact bookkeeping → warmth refresh. Your own replies auto-complete open decisions on those threads.
@@ -83,6 +58,6 @@ npm run typecheck
 
 ## Privacy notes
 
-- Email content goes to Anthropic for triage/drafting and is stored (bodies only transiently; snippets/summaries persist) in your own Supabase project. Both are under your keys.
+- Email content goes to Anthropic for triage/drafting and is stored (bodies only transiently; snippets/summaries persist) in your own Neon database. Both are under your keys.
 - Nothing is deleted from Gmail, ever. `ARCHIVE_NOISE=true` archives (not deletes) classified noise, off by default.
 - All sending requires an explicit click in the UI.

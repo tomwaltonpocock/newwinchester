@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { db } from "@/lib/supabase";
+import { sql } from "@/lib/db";
 import { getAccount } from "@/lib/google";
 import { DecisionCard, DecisionRow } from "@/components/DecisionCard";
 import { SyncButton } from "@/components/SyncButton";
@@ -29,26 +29,21 @@ export default async function DecisionsPage() {
     );
   }
 
-  const supa = db();
-  const { data: open } = await supa
-    .from("decisions")
-    .select("*, threads(subject, participants, last_message_at)")
-    .in("status", ["open", "drafted"])
-    .order("effective_rank", { ascending: false })
-    .limit(30);
-
   // wake snoozed cards whose time has come
-  await supa.from("decisions").update({ status: "open" }).eq("status", "snoozed").lte("snoozed_until", new Date().toISOString());
+  await sql`update decisions set status = 'open' where status = 'snoozed' and snoozed_until <= now()`;
 
-  const { data: signals } = await supa
-    .from("noise_log")
-    .select("signal_note, received_at")
-    .eq("is_signal", true)
-    .order("received_at", { ascending: false })
-    .limit(5);
+  const open = await sql`
+    select d.*, t.subject as thread_subject, t.participants, t.last_message_at
+    from decisions d join threads t on t.id = d.thread_id
+    where d.status in ('open','drafted')
+    order by d.effective_rank desc
+    limit 30`;
 
-  const rows: DecisionRow[] = (open ?? []).map((d) => {
-    const participants = (d.threads?.participants ?? []) as { name: string; email: string }[];
+  const signals = await sql`
+    select signal_note, received_at from noise_log where is_signal = true order by received_at desc limit 5`;
+
+  const rows: DecisionRow[] = open.map((d) => {
+    const participants = (d.participants ?? []) as { name: string; email: string }[];
     const sender = participants[0];
     return {
       id: d.id,
@@ -57,10 +52,9 @@ export default async function DecisionsPage() {
       magnitude: d.magnitude,
       kind: d.kind,
       status: d.status,
-      needs_reply_by: d.needs_reply_by,
+      needs_reply_by: d.needs_reply_by ? new Date(d.needs_reply_by).toISOString() : null,
       travel_note: d.travel_note,
       sender: sender ? sender.name || sender.email : undefined,
-      last_message_at: d.threads?.last_message_at,
     };
   });
 
@@ -73,7 +67,7 @@ export default async function DecisionsPage() {
         <SyncButton />
       </div>
 
-      {signals && signals.length > 0 && (
+      {signals.length > 0 && (
         <div className="mb-4 rounded-xl border border-hairline/60 bg-accentSoft/40 p-3 text-sm">
           {signals.map((s, i) => (
             <p key={i} className="text-accent">

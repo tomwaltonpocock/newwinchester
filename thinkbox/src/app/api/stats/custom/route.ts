@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { computeCustomStat } from "@/lib/stats";
-import { db } from "@/lib/supabase";
+import { sql } from "@/lib/db";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 120;
@@ -14,12 +14,10 @@ export async function POST(req: NextRequest) {
   try {
     const stat = await computeCustomStat(body.data.prompt);
     if (body.data.keep) {
-      await db().from("stat_prefs").upsert({
-        stat_key: stat.key,
-        kept: true,
-        custom_prompt: body.data.prompt,
-        updated_at: new Date().toISOString(),
-      });
+      await sql`
+        insert into stat_prefs (stat_key, kept, custom_prompt, updated_at)
+        values (${stat.key}, true, ${body.data.prompt}, now())
+        on conflict (stat_key) do update set kept = true, custom_prompt = excluded.custom_prompt, updated_at = now()`;
     }
     return NextResponse.json({ ok: true, stat });
   } catch (e) {

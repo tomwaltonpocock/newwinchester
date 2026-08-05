@@ -1,4 +1,4 @@
-import { db } from "./supabase";
+import { sql } from "./db";
 import { textCall } from "./claude";
 import { env } from "./env";
 import { listSentMessages, ParsedMessage } from "./gmail";
@@ -22,7 +22,10 @@ export async function buildVoiceProfile(): Promise<{ profile: string; samples: n
     maxTokens: 900,
   });
 
-  await db().from("voice_profile").upsert({ id: 1, profile, samples_analyzed: samples.length, built_at: new Date().toISOString() });
+  await sql`
+    insert into voice_profile (id, profile, samples_analyzed, built_at)
+    values (1, ${profile}, ${samples.length}, now())
+    on conflict (id) do update set profile = excluded.profile, samples_analyzed = excluded.samples_analyzed, built_at = excluded.built_at`;
   return { profile, samples: samples.length };
 }
 
@@ -40,8 +43,8 @@ export function stripQuoted(body: string): string {
 }
 
 export async function getVoiceProfile(): Promise<string | null> {
-  const { data } = await db().from("voice_profile").select("profile").eq("id", 1).maybeSingle();
-  return data?.profile ?? null;
+  const rows = await sql`select profile from voice_profile where id = 1`;
+  return rows[0]?.profile ?? null;
 }
 
 const ANTI_TELL_RULES = `Hard rules — the reply must not read as AI-written:

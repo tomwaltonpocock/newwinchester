@@ -1,6 +1,6 @@
-import { db } from "./supabase";
+import { sql } from "./db";
 import { env } from "./env";
-import { listInboxMessages, listSentMessages, ensureLabel, labelMessage, ParsedMessage } from "./gmail";
+import { listInboxMessages, listSentMessages, ensureLabel, labelMessage } from "./gmail";
 import { getAccount } from "./google";
 import { triageMessage, TriageResult } from "./triage";
 import { effectiveRank } from "./rank";
@@ -16,19 +16,18 @@ const LABELS = {
 /** Sender rules: exact email or '@domain' patterns. */
 async function ruleFor(fromEmail: string): Promise<string | null> {
   const domain = "@" + fromEmail.split("@")[1];
-  const { data } = await db().from("sender_rules").select("pattern, rule").in("pattern", [fromEmail, domain]);
-  if (!data?.length) return null;
-  const exact = data.find((r) => r.pattern === fromEmail);
-  return (exact ?? data[0]).rule;
+  const rows = await sql`select pattern, rule from sender_rules where pattern in (${fromEmail}, ${domain})`;
+  if (!rows.length) return null;
+  const exact = rows.find((r) => r.pattern === fromEmail);
+  return (exact ?? rows[0]).rule;
 }
 
 export async function runSync(opts: { maxMessages?: number } = {}): Promise<{ processed: number; decisions: number; noise: number }> {
   const account = await getAccount();
   if (!account) throw new Error("No Google account connected");
-  const supa = db();
 
-  const { data: acct } = await supa.from("google_accounts").select("last_synced_at").eq("email", account.email).single();
-  const since = acct?.last_synced_at ? new Date(acct.last_synced_at) : new Date(Date.now() - 3 * 86400_000);
+  const acctRows = await sql`select last_synced_at from google_accounts where email = ${account.email}`;
+  const since = acctRows[0]?.last_synced_at ? new Date(acctRows[0].last_synced_at) : new Date(Date.now() - 3 * 86400_000);
   // Gmail search 'after:' is second-granular epoch; pad back 1h for safety.
   const afterEpoch = Math.floor((since.getTime() - 3600_000) / 1000);
 
@@ -46,8 +45,8 @@ export async function runSync(opts: { maxMessages?: number } = {}): Promise<{ pr
 
   for (const msg of messages) {
     // skip if already seen
-    const { data: seenThread } = await supa.from("threads").select("id, last_message_id").eq("id", msg.threadId).maybeSingle();
-    if (seenThread?.last_message_id === msg.id) continue;
+    const seen = await sql`select id, last_message_id from threads where id = ${msg.threadId}`;
+    if (seen[0]?.last_message_id === msg.id) continue;
     // skip own messages
     if (msg.from.email === account.email) continue;
     processed++;
@@ -71,33 +70,22 @@ export async function runSync(opts: { maxMessages?: number } = {}): Promise<{ pr
       }
     }
 
-    await supa.from("threads").upsert({
-      id: msg.threadId,
-      account_email: account.email,
-      subject: msg.subject,
-      snippet: msg.snippet,
-      participants: [msg.from, ...msg.to, ...msg.cc],
-      last_message_at: msg.date.toISOString(),
-      last_message_id: msg.id,
-      last_from_me: false,
-      category: triage.category,
-      triaged_at: new Date().toISOString(),
-      raw_labels: msg.labelIds,
-      updated_at: new Date().toISOString(),
-    });
+    const participants = JSON.stringify([msg.from, ...msg.to, ...msg.cc]);
+    await sql`
+      insert into threads (id, account_email, subject, snippet, participants, last_message_at, last_message_id, last_from_me, category, triaged_at, raw_labels, updated_at)
+      values (${msg.threadId}, ${account.email}, ${msg.subject}, ${msg.snippet}, ${participants}::jsonb, ${msg.date.toISOString()}, ${msg.id}, false, ${triage.category}, now(), ${msg.labelIds}, now())
+      on conflict (id) do update set
+        subject = excluded.subject, snippet = excluded.snippet, participants = excluded.participants,
+        last_message_at = excluded.last_message_at, last_message_id = excluded.last_message_id,
+        last_from_me = excluded.last_from_me, category = excluded.category, triaged_at = excluded.triaged_at,
+        raw_labels = excluded.raw_labels, updated_at = now()`;
 
     if (triage.category === "noise" || triage.category === "signal_noise") {
       noise++;
-      await supa.from("noise_log").upsert({
-        message_id: msg.id,
-        thread_id: msg.threadId,
-        from_email: msg.from.email,
-        subject: msg.subject,
-        reason: triage.noise_reason,
-        is_signal: triage.category === "signal_noise",
-        signal_note: triage.signal_note,
-        received_at: msg.date.toISOString(),
-      });
+      await sql`
+        insert into noise_log (message_id, thread_id, from_email, subject, reason, is_signal, signal_note, received_at)
+        values (${msg.id}, ${msg.threadId}, ${msg.from.email}, ${msg.subject}, ${triage.noise_reason}, ${triage.category === "signal_noise"}, ${triage.signal_note}, ${msg.date.toISOString()})
+        on conflict (message_id) do nothing`;
       const add = [triage.category === "signal_noise" ? labelIds.signal : labelIds.noise].filter(Boolean);
       const remove = env.archiveNoise() && triage.category === "noise" ? ["INBOX"] : [];
       if (add.length || remove.length) await labelMessage(msg.id, add, remove).catch(() => {});
@@ -116,22 +104,21 @@ export async function runSync(opts: { maxMessages?: number } = {}): Promise<{ pr
       }
       const rank = await computeRank(msg.from.email, kind, triage, msg.date);
       // one open decision per thread: update if exists
-      const { data: existing } = await supa.from("decisions").select("id, rank_adjust").eq("thread_id", msg.threadId).in("status", ["open", "drafted", "snoozed"]).maybeSingle();
-      const row = {
-        thread_id: msg.threadId,
-        title: triage.decision_title ?? msg.subject,
-        summary: triage.decision_summary,
-        options: triage.options ?? [],
-        magnitude: triage.magnitude,
-        kind,
-        status: "open",
-        needs_reply_by: triage.needs_reply_by,
-        travel_note: travelNote,
-        effective_rank: rank,
-        updated_at: new Date().toISOString(),
-      };
-      if (existing) await supa.from("decisions").update(row).eq("id", existing.id);
-      else await supa.from("decisions").insert(row);
+      const existing = await sql`
+        select id from decisions where thread_id = ${msg.threadId} and status in ('open','drafted','snoozed') limit 1`;
+      const title = triage.decision_title ?? msg.subject;
+      const options = JSON.stringify(triage.options ?? []);
+      if (existing.length) {
+        await sql`
+          update decisions set title = ${title}, summary = ${triage.decision_summary}, options = ${options}::jsonb,
+            magnitude = ${triage.magnitude}, kind = ${kind}, status = 'open', needs_reply_by = ${triage.needs_reply_by},
+            travel_note = ${travelNote}, effective_rank = ${rank}, updated_at = now()
+          where id = ${existing[0].id}`;
+      } else {
+        await sql`
+          insert into decisions (thread_id, title, summary, options, magnitude, kind, status, needs_reply_by, travel_note, effective_rank)
+          values (${msg.threadId}, ${title}, ${triage.decision_summary}, ${options}::jsonb, ${triage.magnitude}, ${kind}, 'open', ${triage.needs_reply_by}, ${travelNote}, ${rank})`;
+      }
       if (labelIds.decision) await labelMessage(msg.id, [labelIds.decision]).catch(() => {});
     }
 
@@ -143,22 +130,21 @@ export async function runSync(opts: { maxMessages?: number } = {}): Promise<{ pr
   const sent = await listSentMessages(15, `after:${afterEpoch}`).catch(() => []);
   for (const s of sent) {
     for (const to of s.to) await touchContact(to.email, to.name, s.date, "out");
-    // mark threads we replied to
-    await supa.from("threads").update({ last_from_me: true, updated_at: new Date().toISOString() }).eq("id", s.threadId);
-    // auto-complete open decisions on threads the owner has since replied to
-    await supa.from("decisions").update({ status: "done", decided_at: new Date().toISOString() }).eq("thread_id", s.threadId).eq("status", "open");
+    // mark threads we replied to; auto-complete open decisions on them
+    await sql`update threads set last_from_me = true, updated_at = now() where id = ${s.threadId}`;
+    await sql`update decisions set status = 'done', decided_at = now() where thread_id = ${s.threadId} and status = 'open'`;
   }
 
-  await supa.from("google_accounts").update({ last_synced_at: new Date().toISOString() }).eq("email", account.email);
+  await sql`update google_accounts set last_synced_at = now() where email = ${account.email}`;
   return { processed, decisions, noise };
 }
 
 async function computeRank(sender: string, kind: string, triage: TriageResult, msgDate: Date): Promise<number> {
-  const supa = db();
-  const keys = [`sender:${sender}`, `kind:${kind}`];
-  const { data } = await supa.from("rank_bias").select("key, bias").in("key", keys);
-  const senderBias = data?.find((d) => d.key === keys[0])?.bias ?? 0;
-  const kindBias = data?.find((d) => d.key === keys[1])?.bias ?? 0;
+  const senderKey = `sender:${sender}`;
+  const kindKey = `kind:${kind}`;
+  const rows = await sql`select key, bias from rank_bias where key in (${senderKey}, ${kindKey})`;
+  const senderBias = rows.find((d) => d.key === senderKey)?.bias ?? 0;
+  const kindBias = rows.find((d) => d.key === kindKey)?.bias ?? 0;
   return effectiveRank({
     magnitude: triage.magnitude,
     rankAdjust: 0,
@@ -171,31 +157,26 @@ async function computeRank(sender: string, kind: string, triage: TriageResult, m
 
 async function touchContact(email: string, name: string, at: Date, dir: "in" | "out") {
   if (!email.includes("@")) return;
-  const supa = db();
-  const { data: c } = await supa.from("contacts").select("*").eq("email", email).maybeSingle();
   const iso = at.toISOString();
-  if (!c) {
-    await supa.from("contacts").insert({
-      email,
-      name: name || null,
-      first_seen_at: iso,
-      last_inbound_at: dir === "in" ? iso : null,
-      last_outbound_at: dir === "out" ? iso : null,
-      inbound_count: dir === "in" ? 1 : 0,
-      outbound_count: dir === "out" ? 1 : 0,
-    });
-    return;
-  }
-  const patch: Record<string, unknown> = { updated_at: new Date().toISOString() };
-  if (name && !c.name) patch.name = name;
   if (dir === "in") {
-    if (!c.last_inbound_at || iso > c.last_inbound_at) patch.last_inbound_at = iso;
-    patch.inbound_count = (c.inbound_count ?? 0) + 1;
+    await sql`
+      insert into contacts (email, name, first_seen_at, last_inbound_at, inbound_count)
+      values (${email}, ${name || null}, ${iso}, ${iso}, 1)
+      on conflict (email) do update set
+        name = coalesce(contacts.name, excluded.name),
+        last_inbound_at = greatest(coalesce(contacts.last_inbound_at, 'epoch'::timestamptz), excluded.last_inbound_at),
+        inbound_count = contacts.inbound_count + 1,
+        updated_at = now()`;
   } else {
-    if (!c.last_outbound_at || iso > c.last_outbound_at) patch.last_outbound_at = iso;
-    patch.outbound_count = (c.outbound_count ?? 0) + 1;
+    await sql`
+      insert into contacts (email, name, first_seen_at, last_outbound_at, outbound_count)
+      values (${email}, ${name || null}, ${iso}, ${iso}, 1)
+      on conflict (email) do update set
+        name = coalesce(contacts.name, excluded.name),
+        last_outbound_at = greatest(coalesce(contacts.last_outbound_at, 'epoch'::timestamptz), excluded.last_outbound_at),
+        outbound_count = contacts.outbound_count + 1,
+        updated_at = now()`;
   }
-  await supa.from("contacts").update(patch).eq("email", email);
 }
 
 /**
@@ -203,7 +184,6 @@ async function touchContact(email: string, name: string, at: Date, dir: "in" | "
  * per-contact cadence baselines and warmth. Run on demand from /people.
  */
 export async function indexRelationships(maxSent = 200): Promise<{ contacts: number }> {
-  const supa = db();
   const sent = await listSentMessages(maxSent);
   const byContact = new Map<string, { name: string; dates: Date[] }>();
   for (const s of sent) {
@@ -217,7 +197,8 @@ export async function indexRelationships(maxSent = 200): Promise<{ contacts: num
   for (const [email, info] of byContact) {
     const dates = info.dates.sort((a, b) => a.getTime() - b.getTime());
     const gap = medianGapDays(dates);
-    const { data: c } = await supa.from("contacts").select("*").eq("email", email).maybeSingle();
+    const existing = await sql`select * from contacts where email = ${email}`;
+    const c = existing[0];
     const last = dates.at(-1)!;
     const lastContact = c?.last_inbound_at && new Date(c.last_inbound_at) > last ? new Date(c.last_inbound_at) : last;
     const warmth = warmthScore({
@@ -226,34 +207,34 @@ export async function indexRelationships(maxSent = 200): Promise<{ contacts: num
       targetCadenceDays: c?.target_cadence_days ?? null,
       toneScore: c?.tone_score ?? null,
     });
-    await supa.from("contacts").upsert({
-      email,
-      name: info.name || c?.name || null,
-      first_seen_at: c?.first_seen_at ?? dates[0].toISOString(),
-      last_outbound_at: last.toISOString(),
-      outbound_count: Math.max(c?.outbound_count ?? 0, dates.length),
-      median_gap_days: gap,
-      warmth,
-      updated_at: new Date().toISOString(),
-    });
+    await sql`
+      insert into contacts (email, name, first_seen_at, last_outbound_at, outbound_count, median_gap_days, warmth)
+      values (${email}, ${info.name || null}, ${dates[0].toISOString()}, ${last.toISOString()}, ${dates.length}, ${gap}, ${warmth})
+      on conflict (email) do update set
+        name = coalesce(contacts.name, excluded.name),
+        first_seen_at = least(coalesce(contacts.first_seen_at, excluded.first_seen_at), excluded.first_seen_at),
+        last_outbound_at = greatest(coalesce(contacts.last_outbound_at, 'epoch'::timestamptz), excluded.last_outbound_at),
+        outbound_count = greatest(contacts.outbound_count, excluded.outbound_count),
+        median_gap_days = excluded.median_gap_days,
+        warmth = excluded.warmth,
+        updated_at = now()`;
   }
   return { contacts: byContact.size };
 }
 
 /** Recompute warmth for all tracked contacts (cheap, no API calls). */
 export async function refreshWarmth(): Promise<number> {
-  const supa = db();
-  const { data: contacts } = await supa.from("contacts").select("*").eq("do_not_track", false);
+  const contacts = await sql`select * from contacts where do_not_track = false`;
   let n = 0;
-  for (const c of contacts ?? []) {
-    const last = [c.last_inbound_at, c.last_outbound_at].filter(Boolean).sort().at(-1);
+  for (const c of contacts) {
+    const lastMs = Math.max(...[c.last_inbound_at, c.last_outbound_at].filter(Boolean).map((x: unknown) => new Date(x as string).getTime()), 0);
     const warmth = warmthScore({
-      lastContactAt: last ? new Date(last) : null,
+      lastContactAt: lastMs > 0 ? new Date(lastMs) : null,
       medianGapDays: c.median_gap_days,
       targetCadenceDays: c.target_cadence_days,
       toneScore: c.tone_score,
     });
-    await supa.from("contacts").update({ warmth, updated_at: new Date().toISOString() }).eq("email", c.email);
+    await sql`update contacts set warmth = ${warmth}, updated_at = now() where email = ${c.email}`;
     n++;
   }
   return n;

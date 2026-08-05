@@ -1,4 +1,4 @@
-import { db } from "@/lib/supabase";
+import { sql } from "@/lib/db";
 import { getAccount } from "@/lib/google";
 import { VoiceButton } from "@/components/VoiceButton";
 import { SyncButton } from "@/components/SyncButton";
@@ -11,8 +11,8 @@ export default async function SettingsPage() {
   let envReady = true;
   try {
     account = await getAccount();
-    const { data } = await db().from("voice_profile").select("samples_analyzed, built_at").eq("id", 1).maybeSingle();
-    voice = data;
+    const rows = await sql`select samples_analyzed, built_at from voice_profile where id = 1`;
+    voice = rows[0] ? { samples_analyzed: rows[0].samples_analyzed, built_at: String(rows[0].built_at) } : null;
   } catch {
     envReady = false;
   }
